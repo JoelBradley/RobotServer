@@ -4,6 +4,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -26,7 +27,10 @@ public class GameServer extends Thread {
     private List<Client> connectedPlayers = new ArrayList<Client>();
     private List<Entity> entities = new ArrayList<Entity>();
     private int[] tiles;
-    public GameServer() {
+    private int MAX_PLAYERS;
+    public GameServer(int MAX_PLAYERS) {
+    	this.MAX_PLAYERS = MAX_PLAYERS;
+    	
         try {
             this.socket = new DatagramSocket(1331);
         } catch (SocketException e) {
@@ -53,11 +57,13 @@ public class GameServer extends Thread {
         String message = new String(data).trim();
         PacketTypes type = Packet.lookupPacket(message.substring(0, 2));
         Packet packet = null;
+        boolean changeHost = false;
         switch (type) {
         default:
         case INVALID:
             break;
         case LOGIN:
+        	if(connectedPlayers.size()==MAX_PLAYERS)break;
             packet = new Packet00Login(data);
             System.out.println(getTimeStamp()+"[" + address.getHostAddress() + ":" + port + "] "
                     + ((Packet00Login) packet).getUsername() + " has connected...");
@@ -68,17 +74,28 @@ public class GameServer extends Thread {
             if(tiles!=null){
             	Packet05SendTiles t = new Packet05SendTiles(tiles);
             	t.writeDataToOneClient(this, player);
+            	System.out.println(getTimeStamp()+"[" + address.getHostAddress() + ":" + port + "] "
+                        +"Sent Tiles");
+            	
             }
             for(Entity e : entities){
-            	Packet03AddEntity ent = new Packet03AddEntity(e.id, e.type, e.x, e.y);
+            	Packet03AddEntity ent = new Packet03AddEntity(e.id, e.type, e.x, e.y,e.otherData);
             	ent.writeDataToOneClient(this, player);
+            	System.out.println(getTimeStamp()+"[" + address.getHostAddress() + ":" + port + "] "
+                        +"Sent Entities");
             }
             break;
         case DISCONNECT:
             packet = new Packet01Disconnect(data);
+            if(((Packet01Disconnect) packet).getUsername().equalsIgnoreCase(connectedPlayers.get(0).getUsername())){
+            	System.out.println("Host Left :'(");
+            	
+            	changeHost = true;
+            }
             System.out.println(getTimeStamp()+"[" + address.getHostAddress() + ":" + port + "] "
                     + ((Packet01Disconnect) packet).getUsername() + " has left...");
             this.removeConnection((Packet01Disconnect) packet);
+            
             break;
         case MOVE:
             packet = new Packet02Move(data);
@@ -86,7 +103,9 @@ public class GameServer extends Thread {
             break;
         case ADDENTITY:
         	Packet03AddEntity adde = new Packet03AddEntity(data);
-        	entities.add(new Entity(adde.getId(),adde.getType(),adde.getX(),adde.getY(),false));
+        	entities.add(new Entity(adde.getId(),adde.getType(),adde.getX(),adde.getY(),false,adde.getOtherData()));
+        	 System.out.println(getTimeStamp()+"[" + address.getHostAddress() + ":" + port + "] "
+                     +"Registered Entitiy "+adde.getType()+"["+adde.getId()+"]"+adde.getOtherData());
         	break;
         case MOVEENTITY:
         	Packet04MoveEntity move = new Packet04MoveEntity(data);
@@ -112,9 +131,21 @@ public class GameServer extends Thread {
         		tile.writeDataToOneClient(this, connectedPlayers.get(i));
         	}
         }
+        if(changeHost){
+        	if(connectedPlayers.size()>0){
+        		sendData("You Are Host".getBytes(), connectedPlayers.get(0).ipAddress, connectedPlayers.get(0).port);//set new host
+        		System.out.println("Migrating host..");
+        	}else{//wipe and wait for a new one
+        		System.out.println("No new host, clearing up and waiting");
+        		entities.clear();
+        		tiles = null;
+        	}
+        
+        }
     }
 
     public void addConnection(Client player, Packet00Login packet) {
+    	System.out.println("Adding: "+player.username);
         boolean alreadyConnected = false;
         for (Client p : this.connectedPlayers) {
             if (player.getUsername().equalsIgnoreCase(p.getUsername())) {
@@ -124,11 +155,13 @@ public class GameServer extends Thread {
                 if (p.port == -1) {
                     p.port = player.port;
                 }
+                System.out.println("Player already connected");
                 alreadyConnected = true;
             } else {
                 sendData(packet.getData(), p.ipAddress, p.port);
                 packet = new Packet00Login(p.getUsername(), p.x, p.y);
                 sendData(packet.getData(), player.ipAddress, player.port);
+                System.out.println("Sending new player "+player.username+" to "+ p.username);
             }
         }
         if (!alreadyConnected) {

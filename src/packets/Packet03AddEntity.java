@@ -11,6 +11,7 @@ public class Packet03AddEntity extends Packet {
     private int id;
     private int x, y;
     private String type;
+    private String otherData;
     
 
 
@@ -21,15 +22,23 @@ public class Packet03AddEntity extends Packet {
         this.type = dataArray[1];
         this.x = Integer.parseInt(dataArray[2]);
         this.y = Integer.parseInt(dataArray[3]);
+        try{
+        	this.otherData = dataArray[4];
+        }catch(ArrayIndexOutOfBoundsException e){
+          	this.otherData = "";
+        }
+        System.out.println(this.type+" : "+this.otherData);
+ 
  
     }
 
-    public Packet03AddEntity(int id, String type,int x, int y) {
+    public Packet03AddEntity(int id, String type,int x, int y,String otherData) {
         super(03);
         this.id = id;
         this.x = x;
         this.y = y;
         this.type = type;
+        this.otherData = otherData;
        
     }
 
@@ -44,7 +53,7 @@ public class Packet03AddEntity extends Packet {
 
     @Override
     public byte[] getData() {
-        return ("03" + this.id + "," + this.type + "," + this.x + "," + this.y).getBytes();
+        return ("03" + this.id + "," + this.type + "," + this.x + "," + this.y + "," + this.otherData).getBytes();
 
     }
 
@@ -63,6 +72,10 @@ public class Packet03AddEntity extends Packet {
 	public String getType() {
 		
 		return this.type;
+	}
+
+	public String getOtherData() {
+		return this.otherData;
 	}
 
 }
